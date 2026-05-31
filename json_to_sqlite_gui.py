@@ -8,12 +8,27 @@ from dataclasses import dataclass, field
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
+try:
+    import sv_ttk
+except ImportError:
+    sv_ttk = None
+
 
 TYPE_PRIORITY = {
     "NULL": 0,
     "INTEGER": 1,
     "REAL": 2,
     "VARCHAR": 3,
+}
+
+TYPE_TAGS = {
+    "dict": ("object", "#7dd3fc"),
+    "list": ("array", "#c4b5fd"),
+    "str": ("string", "#86efac"),
+    "int": ("number", "#fde68a"),
+    "float": ("number", "#fde68a"),
+    "bool": ("boolean", "#f9a8d4"),
+    "NoneType": ("null", "#9ca3af"),
 }
 
 
@@ -379,6 +394,9 @@ class JsonSQLiteApp(tk.Tk):
         self.title("JSON -> SQLite Normalizasyon Araci")
         self.geometry("1120x720")
         self.minsize(900, 560)
+        self.option_add("*Font", ("Segoe UI", 10))
+        if sv_ttk is not None:
+            sv_ttk.set_theme("dark")
 
         self.loaded_json = None
         self.loaded_path = None
@@ -395,41 +413,74 @@ class JsonSQLiteApp(tk.Tk):
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
+        self._configure_styles()
 
         toolbar = ttk.Frame(self, padding=(10, 8))
         toolbar.grid(row=0, column=0, sticky="ew")
-        toolbar.columnconfigure(6, weight=1)
+        toolbar.columnconfigure(5, weight=1)
 
         ttk.Button(toolbar, text="JSON Sec", command=self.load_json).grid(row=0, column=0, padx=(0, 8))
         ttk.Label(toolbar, text="Ana tablo:").grid(row=0, column=1, padx=(0, 4))
         ttk.Entry(toolbar, textvariable=self.root_table_var, width=18).grid(row=0, column=2, padx=(0, 8))
         ttk.Button(toolbar, text="Donustur", command=self.convert_json).grid(row=0, column=3, padx=(0, 8))
         ttk.Button(toolbar, text="Reset", command=self.reset_all).grid(row=0, column=4, padx=(0, 8))
-        ttk.Label(toolbar, textvariable=self.status_var).grid(row=0, column=6, sticky="e")
 
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        paned.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        paned.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 8))
 
-        left = ttk.Frame(paned)
-        right = ttk.Frame(paned)
+        left = ttk.Frame(paned, padding=8, relief="solid", borderwidth=1)
+        right = ttk.Frame(paned, padding=8, relief="solid", borderwidth=1)
         paned.add(left, weight=1)
         paned.add(right, weight=1)
 
         self._build_json_panel(left)
         self._build_database_panel(right)
+        self._build_statusbar()
+
+    def _configure_styles(self):
+        style = ttk.Style(self)
+        style.configure("Treeview", rowheight=26)
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+        style.configure("TLabelframe.Label", font=("Segoe UI", 10, "bold"))
+        style.configure("PanelHeader.TLabel", font=("Segoe UI", 11, "bold"))
+        style.configure("EmptyStateTitle.TLabel", font=("Segoe UI", 12, "bold"), foreground="#d1d5db")
+        style.configure("EmptyStateText.TLabel", font=("Segoe UI", 10), foreground="#9ca3af")
+
+    def _build_statusbar(self):
+        statusbar = ttk.Frame(self, padding=(12, 5))
+        statusbar.grid(row=2, column=0, sticky="ew")
+        ttk.Label(
+            statusbar,
+            textvariable=self.status_var,
+            font=("Segoe UI", 10),
+            foreground="#6b7280",
+        ).pack(side="left")
+
+    def _build_panel_header(self, parent, title):
+        header = ttk.Frame(parent)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        header.columnconfigure(0, weight=1)
+
+        ttk.Label(header, text=title, style="PanelHeader.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Separator(header, orient=tk.HORIZONTAL).grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
     def _build_json_panel(self, parent):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
 
-        ttk.Label(parent, text="JSON Onizleme").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self._build_panel_header(parent, "JSON Onizleme")
 
         frame = ttk.Frame(parent)
         frame.grid(row=1, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
 
-        self.json_tree = ttk.Treeview(frame, columns=("type", "value"), show="tree headings")
+        self.json_tree = ttk.Treeview(
+            frame,
+            columns=("type", "value"),
+            show="tree headings",
+            selectmode="none",
+        )
         self.json_tree.heading("#0", text="Key")
         self.json_tree.heading("type", text="Tip")
         self.json_tree.heading("value", text="Deger")
@@ -449,7 +500,7 @@ class JsonSQLiteApp(tk.Tk):
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(2, weight=1)
 
-        ttk.Label(parent, text="SQLite Tablolari").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self._build_panel_header(parent, "SQLite Tablolari")
 
         self.table_combo = ttk.Combobox(parent, textvariable=self.table_var, state="readonly")
         self.table_combo.grid(row=1, column=0, sticky="ew", pady=(0, 8))
@@ -461,13 +512,35 @@ class JsonSQLiteApp(tk.Tk):
         frame.rowconfigure(0, weight=1)
 
         self.data_grid = ttk.Treeview(frame, show="headings")
-        y_scroll = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.data_grid.yview)
-        x_scroll = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.data_grid.xview)
-        self.data_grid.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+        self.data_grid.tag_configure("row_even", background="#1f1f1f", foreground="#f3f4f6")
+        self.data_grid.tag_configure("row_odd", background="#252525", foreground="#f3f4f6")
+
+        self.data_y_scroll = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.data_grid.yview)
+        self.data_x_scroll = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.data_grid.xview)
+        self.data_grid.configure(yscrollcommand=self.data_y_scroll.set, xscrollcommand=self.data_x_scroll.set)
+
+        self.data_placeholder = ttk.Frame(frame, padding=24)
+        self.data_placeholder.columnconfigure(0, weight=1)
+        self.data_placeholder.rowconfigure(0, weight=1)
+        placeholder_content = ttk.Frame(self.data_placeholder)
+        placeholder_content.grid(row=0, column=0)
+        ttk.Label(
+            placeholder_content,
+            text="SQLite tablosu yok",
+            style="EmptyStateTitle.TLabel",
+        ).grid(row=0, column=0, pady=(0, 6))
+        ttk.Label(
+            placeholder_content,
+            text="JSON dosyasi secip Donustur'e bastiginizda tablolar burada gorunur.",
+            style="EmptyStateText.TLabel",
+            justify="center",
+            wraplength=360,
+        ).grid(row=1, column=0)
 
         self.data_grid.grid(row=0, column=0, sticky="nsew")
-        y_scroll.grid(row=0, column=1, sticky="ns")
-        x_scroll.grid(row=1, column=0, sticky="ew")
+        self.data_y_scroll.grid(row=0, column=1, sticky="ns")
+        self.data_x_scroll.grid(row=1, column=0, sticky="ew")
+        self._show_data_placeholder()
 
     def load_json(self):
         path = filedialog.askopenfilename(
@@ -538,9 +611,10 @@ class JsonSQLiteApp(tk.Tk):
         try:
             self.converter.reset_database()
             self._clear_tree(self.json_tree)
-            self._clear_data_grid()
+            self._clear_data_grid(show_placeholder=True)
             self.table_combo["values"] = []
             self.table_var.set("")
+            self.root_table_var.set("")
             self.loaded_json = None
             self.loaded_path = None
             self.status_var.set("Sifirlandi.")
@@ -558,15 +632,17 @@ class JsonSQLiteApp(tk.Tk):
             messagebox.showerror("Tablo okunamadi", str(exc))
             return
 
-        self._clear_data_grid()
+        self._clear_data_grid(show_placeholder=False)
         self.data_grid["columns"] = columns
         for column in columns:
             self.data_grid.heading(column, text=column)
             self.data_grid.column(column, width=max(100, len(column) * 12), stretch=True)
 
-        for row in rows:
-            self.data_grid.insert("", tk.END, values=row)
+        for index, row in enumerate(rows):
+            row_tag = "row_even" if index % 2 == 0 else "row_odd"
+            self.data_grid.insert("", tk.END, values=row, tags=(row_tag,))
 
+        self._show_data_grid()
         self.status_var.set(f"{table_name}: {len(rows)} satir")
 
     def _refresh_table_list(self, tables):
@@ -576,34 +652,70 @@ class JsonSQLiteApp(tk.Tk):
             self.show_selected_table()
         else:
             self.table_var.set("")
-            self._clear_data_grid()
+            self._clear_data_grid(show_placeholder=True)
 
     def _populate_json_tree(self, data):
         self._clear_tree(self.json_tree)
         self._insert_json_node("", "root", data)
 
     def _insert_json_node(self, parent, key, value):
+        type_name = type(value).__name__ if value is not None else "NoneType"
+        tag_name = f"type_{type_name}"
+        display_type, foreground = TYPE_TAGS.get(type_name, (type_name, "#e5e7eb"))
+        self.json_tree.tag_configure(tag_name, foreground=foreground)
+
         if isinstance(value, dict):
-            node = self.json_tree.insert(parent, tk.END, text=key, values=("object", f"{len(value)} alan"))
+            node = self.json_tree.insert(
+                parent,
+                tk.END,
+                text=key,
+                values=(display_type, f"{len(value)} alan"),
+                tags=(tag_name,),
+            )
             for child_key, child_value in value.items():
                 self._insert_json_node(node, child_key, child_value)
         elif isinstance(value, list):
-            node = self.json_tree.insert(parent, tk.END, text=key, values=("array", f"{len(value)} eleman"))
+            node = self.json_tree.insert(
+                parent,
+                tk.END,
+                text=key,
+                values=(display_type, f"{len(value)} eleman"),
+                tags=(tag_name,),
+            )
             for index, item in enumerate(value):
                 self._insert_json_node(node, f"[{index}]", item)
         else:
-            value_type = type(value).__name__ if value is not None else "null"
             display = "" if value is None else str(value)
-            self.json_tree.insert(parent, tk.END, text=key, values=(value_type, display))
+            self.json_tree.insert(
+                parent,
+                tk.END,
+                text=key,
+                values=(display_type, display),
+                tags=(tag_name,),
+            )
 
     def _clear_tree(self, tree):
         for item in tree.get_children():
             tree.delete(item)
 
-    def _clear_data_grid(self):
+    def _show_data_grid(self):
+        self.data_placeholder.grid_remove()
+        self.data_grid.grid(row=0, column=0, sticky="nsew")
+        self.data_y_scroll.grid(row=0, column=1, sticky="ns")
+        self.data_x_scroll.grid(row=1, column=0, sticky="ew")
+
+    def _show_data_placeholder(self):
+        self.data_grid.grid_remove()
+        self.data_y_scroll.grid_remove()
+        self.data_x_scroll.grid_remove()
+        self.data_placeholder.grid(row=0, column=0, columnspan=2, sticky="nsew")
+
+    def _clear_data_grid(self, show_placeholder=False):
         for item in self.data_grid.get_children():
             self.data_grid.delete(item)
         self.data_grid["columns"] = []
+        if show_placeholder:
+            self._show_data_placeholder()
 
     def on_close(self):
         self.converter.close()
